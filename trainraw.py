@@ -106,12 +106,20 @@ def train(
     if len(wandb_log_model) > 0:
         os.environ["WANDB_LOG_MODEL"] = wandb_log_model
 
-    model = LlamaForCausalLM.from_pretrained(
-        base_model,
-        load_in_8bit=True,
-        torch_dtype=torch.float16,
-        device_map=device_map,
-    )
+    if data_path.endswith(".json") or data_path.endswith(".jsonl"):
+        data = load_dataset("json", data_files=data_path)
+    else:
+        # data = load_dataset(data_path, data_files="*.txt")
+        # data = load_dataset(data_path, data_files={'train': ["*.txt"]}, sample_by="document")
+        # data = load_dataset(data_path, data_files={'train': ["*.txt"]}, sample_by="document")
+        data = load_dataset(data_path, split='train')
+        #data = load_dataset(data_path, data_files={'train': ['*']}, sample_by="document")
+
+    print(f"data_path: {data_path}")
+    print(data)
+
+
+
 
     tokenizer = LlamaTokenizer.from_pretrained(base_model)
 
@@ -143,28 +151,20 @@ def train(
         return result
 
     def generate_and_tokenize_prompt(data_point):
-      print(f"data_point len: {len(data_point)}")
-      return tokenize(data_point["text"])
-        # full_prompt = prompter.generate_prompt(
-        #     data_point["instruction"],
-        #     data_point["input"],
-        #     data_point["output"],
-        # )
-        # tokenized_full_prompt = tokenize(full_prompt)
-        # if not train_on_inputs:
-        #     user_prompt = prompter.generate_prompt(
-        #         data_point["instruction"], data_point["input"]
-        #     )
-        #     tokenized_user_prompt = tokenize(user_prompt, add_eos_token=False)
-        #     user_prompt_len = len(tokenized_user_prompt["input_ids"])
+      # print(f"data_point len: {len(data_point)}")
+      return tokenize(data_point["train"])
+    train_data = data.shuffle().map(generate_and_tokenize_prompt)
+    val_data = None
 
-        #     tokenized_full_prompt["labels"] = [
-        #         -100
-        #     ] * user_prompt_len + tokenized_full_prompt["labels"][
-        #         user_prompt_len:
-        #     ]  # could be sped up, probably
-        # return tokenized_full_prompt
+    import sys
+    sys.exit()
 
+    model = LlamaForCausalLM.from_pretrained(
+        base_model,
+        load_in_8bit=True,
+        torch_dtype=torch.float16,
+        device_map=device_map,
+    )
     model = prepare_model_for_int8_training(model)
 
     config = LoraConfig(
@@ -176,14 +176,6 @@ def train(
         task_type="CAUSAL_LM",
     )
     model = get_peft_model(model, config)
-
-    if data_path.endswith(".json") or data_path.endswith(".jsonl"):
-        data = load_dataset("json", data_files=data_path)
-    else:
-        # data = load_dataset(data_path, data_files="*.txt")
-        data = load_dataset(data_path, data_files={'train': ["*.txt"]}, sample_by="document")
-        # data = load_dataset('text', data_files={'train': ['train/text.txt']}, sample_by="document")
-
 
     if resume_from_checkpoint:
         # Check the available weights and load them
@@ -223,9 +215,9 @@ def train(
     #   train_data = data.shuffle().map(generate_and_tokenize_prompt)
     #   val_data = None
 
-    train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
+    
     # train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
-    val_data = None
+    
 
     if not ddp and torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
