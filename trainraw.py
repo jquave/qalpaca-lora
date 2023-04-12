@@ -152,12 +152,11 @@ def train(
 
     def generate_and_tokenize_prompt(data_point):
       # print(f"data_point len: {len(data_point)}")
+      # print(f"data_point: {data_point}")
+      # t_dp = data_point['train']
       return tokenize(data_point["train"])
     train_data = data.shuffle().map(generate_and_tokenize_prompt)
     val_data = None
-
-    import sys
-    sys.exit()
 
     model = LlamaForCausalLM.from_pretrained(
         base_model,
